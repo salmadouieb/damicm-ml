@@ -3,7 +3,8 @@
     {
         "image":
         {
-            "extensions"        : 0, 
+            "ACM_multi_extension": true,
+            "extensions"        : [1, 2, 3, 4], 
             "skip_image"        : true,
             "axis_to_compress"  : 1,
             "correct_leach_bug" : false,
@@ -17,25 +18,17 @@
             "id_col_end"        : -1,
             "n_rows_prescan"    : 1,
             "n_rows_overscan"   : 0,
-            "ccd_rows"          : 4128,
+            "ccd_rows"          : 630,
             "n_cols_prescan"    : 8,
-            "ccd_cols"          : 6144,
+            "ccd_cols"          : 320,
             "n_amp"             : 2,
             "save_images"       : true
-         },
-         "datetime":
-         {
-             "exposure_start"   : "EXPSTART",
-             "readout_start"    : "RDSTRT",
-             "readout_end"      : "RDEND"
          },
          "scp":
         {    
         },
         "convention":
         {
-            "ampdir"        : "VCKDIRN",
-            "itgtime"       : "ITGTIME",
             "Nskips"        : "NDCMS",
             "Ncols"         : "NAXIS1",
             "Nrows"         : "NAXIS2",

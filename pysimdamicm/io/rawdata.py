@@ -540,7 +540,7 @@ class FitsRawData(RawData):
 
         # CONFIGURATION PARAMETERS
         #   add datetime from fits HEADER
-        self.get_datetime(pconfig['datetime'])
+        # self.get_datetime(pconfig['datetime'])
         #   in fits HEADER, for slow control parameters: T, P, ...
         self.get_from_header(pconfig['scp'])
         #   in fits HEADER, to interpret data: Nskips, Nrows, Ncols, ..
