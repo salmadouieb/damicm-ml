@@ -469,6 +469,7 @@ class PedestalSubtractionProcess(SKImageProcess):
         # the overscan region is not negligigle. To prevent the algorithm to include pixels with 
         # signal from ionizing particles is to mask those pixels above a minimum value
         if self.n_sigma_to_mask>0:
+            print(type(image))
             mad   = np.ma.median(np.ma.abs(image-np.ma.median(image)))
             if self.cut_left_tail and self.cut_right_tail:
                 image = np.ma.array(image, mask = np.logical_or( (image-np.ma.median(image)) >  1.0*self.n_sigma_to_mask*mad,

@@ -129,14 +129,14 @@
             "do_calibration"    : true,
             "calibration"       : 1.0,
             "n_peaks"           : 2,
-            "binning_size"      : 0.05,
-            "sigma_max"         : 0.5,
+            "binning_size"      : 0.01,
+            "sigma_max"         : 2.0,
             "dc_min"            : 0.0001,
-            "dc_max"            : 2.0,
+            "dc_max"            : 20.0,
             "gain_min"          : 0.8,
             "gain_max"          : 1.8,
-            "x_min"             : -5,
-            "x_max"             : 10
+            "x_min"             : -1.0,
+            "x_max"             : 6.0
         },
         "FitDarkCurrentPerRow":
         {
