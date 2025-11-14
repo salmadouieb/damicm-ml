@@ -1,0 +1,86 @@
+#!/usr/bin/env python3 
+""":script:reate_mongDB_document`` to join pkl files to 
+        create a mongoDB document to fill the mongoDB 
+============================================================
+
+
+      .. moduleauthor:: Nuria Castello-Mor <castello@ifca.unican.es>
+      .. date::01/10/2020
+
+"""
+
+import sys 
+
+
+### To avoid ROOT help print out
+if not '-h' in sys.argv and not '--help'in sys.argv:
+    from pysimdamicm.dqm.dqm_manager import DQMManager
+    from glob import glob
+    import pickle
+
+    from pysimdamicm import __commit__
+
+
+def main(pkls, npzdir, run):
+
+    lof = glob(pkls)
+        
+    # man.mongodb is a DataFrame with the full set of me_obs
+    document = []
+    for i,f in enumerate(lof):
+        file_object = open(f, 'rb')
+        try:
+            me_obj = pickle.load(file_object)
+        except EOFError:
+            continue
+        document.append(me_obj)
+        file_object.close()
+    
+    print("{} documents will be appended for the mongoDB ".format(i+1))
+
+    # manager 
+    man = DQMManager()
+    man.mongodb = {run: document[0] }
+    for meobj in document[1:]:
+        man.mongodb[run] = man.mongodb[run].append(meobj,ignore_index=True)
+
+    # fill the mongoDB documents
+    man.fill_mongoDB_documents()
+
+    # close the document and write
+    man.close_DB_document(run,npzdir)
+
+    return
+
+
+##################################################
+if __name__ == '__main__':
+
+    import argparse
+    from argparse import Action
+    import os
+    
+    parser = argparse.ArgumentParser()
+
+    #### MANDATORY ARGUMENTS
+    ##################################################
+    parser.add_argument(
+            action="store",
+            dest="pkl_files",
+            help="Path where the pkl files with the mongoDB data (as pandas) are")
+
+    parser.add_argument("-o",
+            action="store",
+            dest="npz_dir",
+            help="Directory for the final npz mongoDB document with all files appended")
+
+    parser.add_argument("--run","-r",
+            action="store",
+            dest="run",
+            help="Run number")
+
+    args = parser.parse_args(args=None if sys.argv[1:] else ['--help'])
+    
+    main(args.pkl_files, args.npz_dir, args.run)
+
+

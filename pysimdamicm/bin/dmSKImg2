@@ -1,0 +1,229 @@
+#!/usr/bin/env python3
+import sys
+
+
+### To avoid ROOT help print out
+if not '-h' in sys.argv and not '--help'in sys.argv:
+    from pysimdamicm.utils.config import Config
+    from pysimdamicm.scripts.simulCCDimg import progressbar
+    from pysimdamicm.process_manager import ProcessManager
+    from pysimdamicm.io.data_formats import OutputDataManager,G4HitCollection,PixelizedEvent,ProcessConfigTree
+    from pysimdamicm.utils.units import Units
+
+    from pysimdamicm import __commit__
+
+    import pandas as pd
+    import numpy as np
+    import random
+    
+    u = Units()
+
+class HitCollection():
+
+    def __init__(self,diffratefile,Nevts,x_ccd=92.16, y_ccd=61.92,z_ccd=0.669,pdg=-1):
+        """
+
+
+        diffratefile : str
+            input file with the energy and the differential rate for a given dark matter particle
+
+        Nevts : int
+            number of events to generate using the differential rates
+
+        x_ccd : float
+            size of the sensitive region of the CCD in mm in the x-direction (perpendicular to the
+            serial register, i.e. columns)
+
+        y_ccd : float
+            size of the sensitive region of the CCD in mm in the y-direction (paralel to serial
+            register, i.e. rows)
+
+        z_ccd : float
+            size of the sensitive region of the CCD in mm in the z-direction (thickness of the CCD)
+
+        pdg : int
+            id to differentiate the simulated particle
+
+        """
+        
+        # 
+        Nevts = int(Nevts)
+
+        #### read input file which should contain the energy and the differencital rate in CSV, two
+        # columns: energy  [eV], and rates [events/eV/kg/year]
+        data = pd.read_csv(diffratefile)
+        
+        # event number
+        self.EventID= np.linspace(1,Nevts,Nevts).astype(int)
+        
+        # energy in eV
+        #self.Edep   = random.choices(data.energies, data.rates, k=Nevts)
+        self.Edep = np.repeat(data.energies, Nevts)
+        # simulate interaction with the silicon cristal
+        self.posx   = np.random.uniform(0,x_ccd,size=Nevts)
+        self.posy   = np.random.uniform(0,y_ccd,size=Nevts)
+
+        # simulate interaction depth
+        self.posz   = np.random.uniform(0,z_ccd*1000., size=Nevts)/1000.
+        
+        self.pdg    = np.array([int(pdg)]*Nevts)
+
+        return
+    
+    def as_pandas(self):
+
+        data = pd.DataFrame.from_dict({
+            'EventID':self.EventID,
+            'Edep':self.Edep,
+            'posx':self.posx,
+            'posy':self.posy,
+            'posz':self.posz,
+            'pdg':self.pdg,
+            'time':[1.0]*len(self.posx),
+            'ccd':[1]*len(self.posx)
+            })
+        
+        return data
+
+def simulate(diffratefile,Nevts,config,output,debug,amplifier="L",ccd=1):
+    
+    if debug:
+        debug_plots=__debug_plots
+    else:
+        debug_plots=lambda *args,**kwargs: None
+     
+    ### Set to Singleton Units some attributes needed along the process
+    for attr in ["ccd_shape","ccd_pixel_size_x","ccd_pixel_size_y","ccd_thickness",
+            "n_cols_overscan","n_cols_prescan","n_rows_overscan","n_rows_prescan",
+            "e2eV", "ADC2eV", "detector_name","img_exp_time"]:
+        try:
+            print( " Setting value of ", attr, " to ", config.configuration["CF"][attr])
+            setattr(u,attr,config.configuration["CF"][attr])
+        except KeyError:
+            continue
+
+    # generate a DM simulated signal
+    # size of the CCD 850 rows x 6144 cols (before binned)
+    # x = 6140 pix * 15 * 0.001 = 92.10 mm
+    dmHC = HitCollection(diffratefile,Nevts, x_ccd=92.10, y_ccd=12.6, z_ccd=0.669, pdg=-1)
+    data = dmHC.as_pandas()
+
+    data.to_csv(diffratefile.split(".")[0]+"_dmSKImg_dmHC_aspandas.csv")
+
+    # output manager
+    if output is None:
+        output = diffratefile.split(".")[0]+"_dmSKImg_clustersRec.root"
+
+    outman = OutputDataManager(output)
+    print(" -- INFO. Output root file: ", output)
+
+    # prepare the manager
+    pman = ProcessManager()
+    pman.set_configuration(config)
+
+    for event in range(1,Nevts+1):
+        if event%1000==0 or event==1:
+            print(" processing event .... {}/{}".format(event,Nevts))
+        event_tuple = (event,ccd)
+
+        # prepare the event to apply all process
+        evt_reg = data[data.EventID==event]
+        hit = G4HitCollection( event_tuple, x=evt_reg, mask=evt_reg.ccd==1, z_offset=0)
+
+        # creating MCT 
+        hit.Edep_MCT = hit.Edep.values.copy()
+        hit.posx_MCT = hit.x.values.copy()
+        hit.posy_MCT = hit.y.values.copy()
+        hit.posz_MCT = hit.z.values.copy()
+        
+        hit.g4_pdg  = hit.pdg.copy()
+        hit.g4_Edep = hit.Edep.copy()
+        hit.g4_posx = hit.x.copy()
+        hit.g4_posy = hit.y.copy()
+        hit.g4_posz = hit.z.copy()
+        
+        # set output dir/file
+        setattr(hit,'outfile',output)
+        
+        # execute all process
+        _ = pman.execute_process(hit)
+
+        if pman.active_ClusterFinder and not hit.killed:
+            Nclusters    = hit.Nclusters
+            evt_clusters = hit.evt_clusters
+
+            ### create an entry for each file
+            # print(" -- INFO. Event {}, ccd {}: {} clusters >>>> clustersRec".format(event,ccd,Nclusters))
+            outman.fill_tree("clustersRec",event,evt_clusters,isdata=False)
+        
+        if not hit.killed:
+            debug_plots(hit)
+
+        ### pixelized event -- after diffusion (if applied)
+        # outman.fill_tree("pixelizedEvent",event,[PixelizedEvent(hit)])
+    
+    outman.fill_tree("process_config",0,[ProcessConfigTree(pman.__sequence__)])
+    if hit is not None:
+        pman.close_process(hit)
+    outman.close()
+    print("\n Output Root file: {}\n".format(outman.file_name))
+
+    return
+
+def __debug_plots(hit,Npix_min=1,only_this_event=None):
+    """
+    """
+    hit.Draw(Npix_min,only_this_event,box_size=11)
+
+
+########################################################################################
+#
+########################################################################################
+if __name__=='__main__':
+
+    import argparse
+    import os  
+    from argparse import Action
+    from time import time
+    
+    parser = argparse.ArgumentParser()
+    
+    parser.add_argument(
+            action="store",
+            dest="ratesfile",
+            help="CSV file with the differential rate and the energy (two column format: energy (eV) and rates (evts/ev/kg/year))")
+    
+    parser.add_argument("--nevts",
+            action="store",
+            dest="nevts",
+            help="number of events to randomly generate from the differential rate")
+    
+    parser.add_argument("--json","-j",
+            action="store",
+            dest="jsonfile",
+            help="JSON configuration file. Run `psimulCCDimg  --json help` to list configuration parameters")
+    
+    parser.add_argument("-o",
+            action="store",
+            dest="output",
+            default=None,
+            help="absolute or relative path for the output files")
+   
+    parser.add_argument("--debug",
+            action="store_true",
+            dest="debug",
+            help="Display the debug plot")
+    
+    arg = parser.parse_args() 
+
+    ### Load CONFIGURATION from JSON file
+    config = Config(arg.jsonfile)
+    config.activate_configuration()
+    
+    t0 = time()
+    print(" -- Start simulation ")
+    
+    simulate(arg.ratesfile,int(arg.nevts),config,arg.output,arg.debug)
+
+    print(" -- Done\n -- Execution time: {} min".format((time()-t0)/60.0))
+     

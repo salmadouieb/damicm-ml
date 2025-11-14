@@ -1,0 +1,173 @@
+#!/usr/bin/env python3 
+""":script:`panaSKImg` -- CCD image processing with python3
+============================================================
+
+
+      .. moduleauthor:: Nuria Castello-Mor <castello@ifca.unican.es>
+      .. date::01/10/2020
+
+"""
+
+import sys 
+
+
+### To avoid ROOT help print out
+if not '-h' in sys.argv and not '--help'in sys.argv:
+    from pysimdamicm.utils.config import Config
+    from pysimdamicm import __commit__
+
+
+##################################################
+if __name__ == '__main__':
+
+    import argparse
+    from argparse import Action
+    import os
+    
+    parser = argparse.ArgumentParser()
+
+    #### MANDATORY ARGUMENTS
+    ##################################################
+    parser.add_argument(
+            action="store",
+            dest="infile",
+            nargs="+",
+            help='List of input CCD Image or a pattern file names for multiple inputs (with serveral patterns). In the second case, use " '+
+            ' to quote the expressions. If extension is not 0, see -e')
+
+    parser.add_argument("--skip",
+            action="store",
+            dest="skip",
+            nargs="+",
+            default=["Clean"],
+            help="List of strings (for instance '_full_1.fits'). When `infile` is a "+
+            "list of files, this option will remove any file from the list if any of these strings "
+            "are substrings of the file name.")
+
+    parser.add_argument("-o", "--ouptut",
+            action="store",
+            dest="output",
+            default=os.path.abspath("."),
+            help="Directory for the outputs (plots and images will be both recorded here)")
+    
+    parser.add_argument("-j","--json",
+            action="store",
+            dest="jsonfile",
+            default=None,
+            help="Configuration JSON file for reconstruction (processes to apply data)")
+
+    parser.add_argument("--me-json",
+           action="store",
+           dest="me_jsonfile",
+           default=None,
+           help="Configuration JSON file for the ME (if not, all ME will be created)")
+   
+
+    parser.add_argument("--dqm-data-dir",
+            action="store",
+            dest="dqm_data_dir",
+            help="Absolute or relative path pointing to the directory where the data of the run is. "+
+            "In this case, the mandatory argument (input file name) is used as a pattern file name to select only "+
+            "those file under --dqm-data-dir that follows this regular expression (for instance *Source*fits).")
+    parser.add_argument("--image-HR",
+            action="store",
+            dest="image_HR",
+            help="Image with high single-electron resolution, i.e. the one with the highest number "+
+            "of single skip measurements to be used for the FitDarkCurrent (assuming it is in the "+
+            "same directory as data)") 
+    
+    parser.add_argument("--run",
+            action="store",
+            dest="run",
+            help="Run number ID")
+    parser.add_argument("--image",
+            action="store",
+            dest="image",
+            type=int,
+            help="Image number ID")
+    parser.add_argument("--ccd",
+            action="store",
+            dest="ccd",
+            type=int,
+            help="CCD number ID")
+    parser.add_argument("--tag",
+            action="store",
+            dest="run_tag",
+            help="Run tag number, needed for the mongo DB")
+
+    parser.add_argument("--me-ref",
+            action="store",
+            dest="me_ref",
+            help="Absolute or relative path to the me_summary pickle file to use as reference")
+
+    parser.add_argument("--pdf",
+            action="store_true",
+            dest="dopdf",
+            help="Set to generate the PDF file from the LaTex file (which is always created)")
+
+    parser.add_argument("--nopdf",
+            action="store",
+            dest="nopdf",
+            type=int,
+            default=1,
+            help="Set or unset the creation of the pdf report")
+
+
+    args = parser.parse_args(args=None if sys.argv[1:] else ['--help'])
+    
+    from pysimdamicm.scripts import dqm
+    import json
+    
+    #################################################################################
+    # CONFIGURATION PARAMETERS TO PROCESS THE INPUT IMAGE
+    #################################################################################
+    from pysimdamicm import __path__ as module_path
+    if args.jsonfile is None:
+        args.jsonfile = module_path[0]+"/json/panaSKImg_configuration.json"
+    else:
+        if not os.path.exists(args.jsonfile):
+            raise AttributeError("""\033[1;31m dqmSKImg: Configuration JSON file "{}" does not exist \033[1;m""".format(args.jsonfile))
+    with open(args.jsonfile) as json_data_file:
+        pconfig = json.load(json_data_file)
+    print("Config INFO. Setting user configurations:")
+    config = Config(args.jsonfile,False)
+    config.activate_configuration()
+
+    #################################################################################
+    # CONFIGURATION PARAMETERS THE MONITORING ELEMENTS
+    #################################################################################
+    if args.me_jsonfile is None:
+        args.me_jsonfile = module_path[0]+"/json/dqmSKImg_configuration.json"
+    else:
+        if not os.path.exists(args.me_jsonfile):
+            raise AttributeError("""\033[1;31m dqmSKImg: Configuration JSON file "{}" does not exist \033[1;m""".format(args.me_jsonfile))
+    with open(args.me_jsonfile) as json_me_file:
+        pconfig = json.load(json_me_file)
+    print("Config INFO. Setting user configurations:")
+    me_config = Config(args.me_jsonfile, is_dqm=True)
+    me_config.activate_configuration()
+
+    #################################################################################
+    ### OUTPUT DIRECTORY
+    #################################################################################
+    if args.output:
+        outdir = os.path.abspath(args.output)
+    else:
+        outdir = os.path.abspath(".")
+    # is directory?
+    if not os.path.isdir(outdir):
+        raise ValueError("{} is not a directory".format(outdir))
+
+    ### RUNNING THE MAIN SCRIPT: RUNS SECUENTIALY A LIST OF PROCESS OVER 
+    #       a list of input files
+    ###############################################################################
+    if args.me_ref is not None:
+        args.me_ref = os.path.abspath(args.me_ref)
+        if not os.path.isfile(args.me_ref):
+            raise IOError("File {} not found".format(args.me_ref))
+    
+    nopdf = True if int(args.nopdf)==1 else False
+    dqm.main(args.run, args.infile, (config, me_config), args.me_ref, args.skip, args.image_HR,
+            args.dqm_data_dir, outdir, dopdf=args.dopdf, image_id=args.image, ccd_id=args.ccd,
+            run_tag=args.run_tag,nopdf=nopdf)
+
