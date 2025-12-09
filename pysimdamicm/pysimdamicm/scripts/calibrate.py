@@ -119,7 +119,7 @@
 #     return out_fits
 
 
-def calibrate(file_path, json_name, keep_plot=False,
+def calibrate(file_path, cfg_path, keep_plot=False,
               save=True, return_array=False, out_path=None):
     """
     Take a raw FITS image, perform pedestal subtraction, fit dark current,
@@ -164,9 +164,9 @@ def calibrate(file_path, json_name, keep_plot=False,
     if not os.path.isfile(file_path):
         raise FileNotFoundError(f"Input FITS not found: {file_path}")
 
-    cfg_file = os.path.join(ccd.__path__[0], "json", json_name)
+    cfg_file = cfg_path
     if not os.path.isfile(cfg_file):
-        raise FileNotFoundError(f"JSON config not found in pysimdamicm/json/: {json_name}")
+        raise FileNotFoundError(f"JSON config not found in {cfg_path}")
 
     print("[1/8] Loading configuration...")
     cfg = ccd.utils.config.Config(cfg_file, simulations=False)
